@@ -262,7 +262,10 @@ class LanClipEngine(
 
         if (serverSocket == null) {
             val srv = try {
-                ServerSocket(preferredPort)
+                ServerSocket().apply {
+                    reuseAddress = true
+                    bind(InetSocketAddress(preferredPort))
+                }
             } catch (_: Exception) {
                 if (preferredPort != 0) ServerSocket(0) else throw IllegalStateException("无法绑定监听端口")
             }
