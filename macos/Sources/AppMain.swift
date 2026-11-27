@@ -24,7 +24,7 @@ final class ToastHUD {
             label.alignment = .center
             label.sizeToFit()
 
-            let width = max(240, label.frame.width + 44)
+            let width = max(260, label.frame.width + 44)
             let height: CGFloat = 44
 
             let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
@@ -64,7 +64,7 @@ final class ToastHUD {
                 }
             }
             self.dismissWork = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.4, execute: work)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.6, execute: work)
         }
     }
 }
@@ -85,7 +85,7 @@ final class WelcomeWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        win.title = "局域网传文字 · 首次配对"
+        win.title = "局域网快传 · 设备配对"
         win.isReleasedWhenClosed = false
         win.center()
         super.init(window: win)
@@ -97,12 +97,12 @@ final class WelcomeWindowController: NSWindowController {
     private func setupUI() {
         guard let content = window?.contentView else { return }
 
-        let titleLabel = NSTextField(labelWithString: "两台 MacBook 尚未配对")
+        let titleLabel = NSTextField(labelWithString: "尚未添加信任设备")
         titleLabel.font = NSFont.systemFont(ofSize: 17, weight: .semibold)
         titleLabel.frame = NSRect(x: 28, y: 185, width: 364, height: 26)
         content.addSubview(titleLabel)
 
-        let descLabel = NSTextField(wrappingLabelWithString: "全程纯局域网端到端加密，无需开启「远程登录」。\n请让一台电脑生成 6 位验证码，另一台输入即可瞬间连通。")
+        let descLabel = NSTextField(wrappingLabelWithString: "支持 Mac、Windows、安卓端到端加密互传文字与文件，无需开启「远程登录」。\n让一台设备生成 6 位验证码，另一台输入即可双向打通。")
         descLabel.font = NSFont.systemFont(ofSize: 13)
         descLabel.textColor = .secondaryLabelColor
         descLabel.frame = NSRect(x: 28, y: 125, width: 364, height: 48)
@@ -164,10 +164,10 @@ final class GenerateCodeWindowController: NSWindowController, NSWindowDelegate {
     private func setupUI() {
         guard let content = window?.contentView else { return }
 
-        let tip = NSTextField(labelWithString: "请在另一台 Mac 上打开本软件并输入下方 6 位验证码：")
+        let tip = NSTextField(labelWithString: "请在另一台 Mac / Windows / 安卓设备上输入下方 6 位验证码：")
         tip.font = NSFont.systemFont(ofSize: 13)
         tip.alignment = .center
-        tip.frame = NSRect(x: 20, y: 205, width: 360, height: 22)
+        tip.frame = NSRect(x: 16, y: 205, width: 368, height: 22)
         content.addSubview(tip)
 
         codeLabel = NSTextField(labelWithString: "--- ---")
@@ -282,7 +282,7 @@ final class EnterCodeWindowController: NSWindowController, NSWindowDelegate {
     private func setupUI() {
         guard let content = window?.contentView else { return }
 
-        let l1 = NSTextField(labelWithString: "1. 选择附近的 Mac：")
+        let l1 = NSTextField(labelWithString: "1. 选择附近的设备：")
         l1.font = NSFont.systemFont(ofSize: 13, weight: .medium)
         l1.frame = NSRect(x: 24, y: 222, width: 372, height: 20)
         content.addSubview(l1)
@@ -319,7 +319,7 @@ final class EnterCodeWindowController: NSWindowController, NSWindowDelegate {
         pairBtn.frame = NSRect(x: 256, y: 74, width: 140, height: 34)
         content.addSubview(pairBtn)
 
-        statusLabel = NSTextField(wrappingLabelWithString: "正在自动搜索同一局域网内的 Mac...")
+        statusLabel = NSTextField(wrappingLabelWithString: "正在自动搜索同一局域网内的设备...")
         statusLabel.font = NSFont.systemFont(ofSize: 12)
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.frame = NSRect(x: 24, y: 18, width: 372, height: 42)
@@ -330,7 +330,7 @@ final class EnterCodeWindowController: NSWindowController, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         codeField.stringValue = ""
         statusLabel.textColor = .secondaryLabelColor
-        statusLabel.stringValue = "正在自动搜索同一局域网内的 Mac..."
+        statusLabel.stringValue = "正在自动搜索同一局域网内的设备..."
         pairBtn.isEnabled = true
         refreshPeerList([])
         showWindow(nil)
@@ -379,7 +379,7 @@ final class EnterCodeWindowController: NSWindowController, NSWindowDelegate {
 
         if selectedEndpoint == nil && manualIP.isEmpty {
             statusLabel.textColor = .systemRed
-            statusLabel.stringValue = "未检测到附近 Mac，请填写对方的局域网 IP。"
+            statusLabel.stringValue = "未检测到附近设备，请填写对方的局域网 IP。"
             return
         }
 
@@ -419,9 +419,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var menu: NSMenu!
 
     private var statusMenuItem: NSMenuItem!
-    private var sendMenuItem: NSMenuItem!
+    private var sendClipMenuItem: NSMenuItem!
+    private var sendFileMenuItem: NSMenuItem!
+    private var switchPeerMenuItem: NSMenuItem!
+    private var switchPeerSubmenu: NSMenu!
+    private var managePeerMenuItem: NSMenuItem!
+    private var managePeerSubmenu: NSMenu!
     private var toggleReceiverItem: NSMenuItem!
-    private var clearPairItem: NSMenuItem!
     private var launchAtLoginItem: NSMenuItem!
     private var ipMenuItem: NSMenuItem!
 
@@ -446,7 +450,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } catch {
             let alert = NSAlert()
             alert.alertStyle = .critical
-            alert.messageText = "无法初始化「局域网传文字」"
+            alert.messageText = "无法初始化「局域网快传」"
             alert.informativeText = error.localizedDescription
             alert.runModal()
             NSApp.terminate(nil)
@@ -473,6 +477,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             pb.setString(text, forType: .string)
             ToastHUD.shared.show("已收到来自 \(peerName) 的 \(text.count) 字，直接 ⌘V 粘贴")
         }
+        engine.onFileReceived = { _, savedName, peerName in
+            ToastHUD.shared.show("已收到来自 \(peerName) 的文件「\(savedName)」，保存在 下载/LanClip")
+        }
 
         setupStatusBar()
         engine.start()
@@ -481,12 +488,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.hasCompletedLaunch = true
-            if self.engine.currentPeer() == nil {
+            if self.engine.pairedPeers().isEmpty {
                 NSApp.activate(ignoringOtherApps: true)
                 self.welcomeWC.showWindow(nil)
                 self.welcomeWC.window?.makeKeyAndOrderFront(nil)
             } else {
-                ToastHUD.shared.show("「局域网传文字」已在后台就绪（点击图标即可发剪贴板）", playSound: false)
+                ToastHUD.shared.show("「局域网快传」已在后台就绪（点击图标发文字，拖入文件直接发）", playSound: false)
             }
         }
     }
@@ -494,7 +501,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !hasCompletedLaunch { return false }
         if flag { return true }
-        if engine.currentPeer() == nil {
+        if engine.pairedPeers().isEmpty {
             NSApp.activate(ignoringOtherApps: true)
             welcomeWC.showWindow(nil)
             welcomeWC.window?.makeKeyAndOrderFront(nil)
@@ -502,6 +509,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             sendCurrentClipboard()
         }
         return false
+    }
+
+    func application(_ sender: NSApplication, open urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        if engine.pairedPeers().isEmpty {
+            NSApp.activate(ignoringOtherApps: true)
+            welcomeWC.showWindow(nil)
+            welcomeWC.window?.makeKeyAndOrderFront(nil)
+            return
+        }
+        sendFilesSequentially(urls)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -515,11 +533,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func setupStatusBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let btn = statusItem.button {
-            if let img = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "局域网传文字") {
+            if let img = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "局域网快传") {
                 img.isTemplate = true
                 btn.image = img
             } else {
-                btn.title = "传字"
+                btn.title = "快传"
             }
         }
 
@@ -530,9 +548,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusMenuItem.isEnabled = false
         menu.addItem(statusMenuItem)
 
-        sendMenuItem = NSMenuItem(title: "发送当前剪贴板文字", action: #selector(handleSendClick), keyEquivalent: "")
-        sendMenuItem.target = self
-        menu.addItem(sendMenuItem)
+        sendClipMenuItem = NSMenuItem(title: "发送当前剪贴板文字", action: #selector(handleSendClick), keyEquivalent: "")
+        sendClipMenuItem.target = self
+        menu.addItem(sendClipMenuItem)
+
+        sendFileMenuItem = NSMenuItem(title: "发送文件...", action: #selector(handleSendFilesClick), keyEquivalent: "")
+        sendFileMenuItem.target = self
+        menu.addItem(sendFileMenuItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        switchPeerSubmenu = NSMenu()
+        switchPeerMenuItem = NSMenuItem(title: "切换目标设备", action: nil, keyEquivalent: "")
+        switchPeerMenuItem.submenu = switchPeerSubmenu
+        menu.addItem(switchPeerMenuItem)
+
+        managePeerSubmenu = NSMenu()
+        managePeerMenuItem = NSMenuItem(title: "管理已配对设备", action: nil, keyEquivalent: "")
+        managePeerMenuItem.submenu = managePeerSubmenu
+        menu.addItem(managePeerMenuItem)
+
+        let openDownloadsItem = NSMenuItem(title: "打开接收文件夹（下载/LanClip）", action: #selector(handleOpenDownloads), keyEquivalent: "")
+        openDownloadsItem.target = self
+        menu.addItem(openDownloadsItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -549,10 +587,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let enterItem = NSMenuItem(title: "输入对方验证码配对...", action: #selector(openEnterCode), keyEquivalent: "")
         enterItem.target = self
         menu.addItem(enterItem)
-
-        clearPairItem = NSMenuItem(title: "清除当前配对", action: #selector(handleClearPairing), keyEquivalent: "")
-        clearPairItem.target = self
-        menu.addItem(clearPairItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -579,20 +613,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func refreshMenu() {
-        let peer = engine.currentPeer()
+        let peers = engine.pairedPeers()
+        let active = engine.activePeer()
         let recvOn = engine.isReceiverEnabled()
-        if let peer = peer {
-            statusMenuItem.title = "已配对：\(peer.displayName)"
-            sendMenuItem.isEnabled = true
+
+        switchPeerSubmenu.removeAllItems()
+        managePeerSubmenu.removeAllItems()
+
+        if let active = active, !peers.isEmpty {
+            statusMenuItem.title = "目标：\(active.displayName)（共 \(peers.count) 台）"
+            sendClipMenuItem.isEnabled = true
+            sendFileMenuItem.isEnabled = true
+            switchPeerMenuItem.isEnabled = true
+            managePeerMenuItem.isEnabled = true
             toggleReceiverItem.isEnabled = true
             toggleReceiverItem.title = recvOn ? "接收开关：已开启（点击关闭）" : "接收开关：已关闭（点击开启）"
-            clearPairItem.isEnabled = true
+
+            for p in peers {
+                let swItem = NSMenuItem(title: p.displayName, action: #selector(handleSelectPeer(_:)), keyEquivalent: "")
+                swItem.target = self
+                swItem.representedObject = p.deviceID
+                swItem.state = (p.deviceID == active.deviceID) ? .on : .off
+                switchPeerSubmenu.addItem(swItem)
+
+                let rmItem = NSMenuItem(title: "移除「\(p.displayName)」", action: #selector(handleRemoveOnePeer(_:)), keyEquivalent: "")
+                rmItem.target = self
+                rmItem.representedObject = p
+                managePeerSubmenu.addItem(rmItem)
+            }
+
+            managePeerSubmenu.addItem(NSMenuItem.separator())
+            let clearAllItem = NSMenuItem(title: "清除全部配对", action: #selector(handleClearPairing), keyEquivalent: "")
+            clearAllItem.target = self
+            managePeerSubmenu.addItem(clearAllItem)
         } else {
             statusMenuItem.title = "状态：尚未配对"
-            sendMenuItem.isEnabled = false
+            sendClipMenuItem.isEnabled = false
+            sendFileMenuItem.isEnabled = false
+            switchPeerMenuItem.isEnabled = false
+            managePeerMenuItem.isEnabled = false
             toggleReceiverItem.isEnabled = false
             toggleReceiverItem.title = "接收开关（配对后可用）"
-            clearPairItem.isEnabled = false
         }
 
         launchAtLoginItem.state = FileManager.default.fileExists(atPath: launchAgentURL.path) ? .on : .off
@@ -602,6 +663,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func handleSendClick() {
         sendCurrentClipboard()
+    }
+
+    @objc private func handleSendFilesClick() {
+        NSApp.activate(ignoringOtherApps: true)
+        let panel = NSOpenPanel()
+        panel.title = "选择要加密发送的文件"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        if panel.runModal() == .OK, !panel.urls.isEmpty {
+            sendFilesSequentially(panel.urls)
+        }
+    }
+
+    private func sendFilesSequentially(_ urls: [URL], index: Int = 0, sentCount: Int = 0) {
+        if index >= urls.count {
+            if sentCount > 1, let targetName = engine.activePeer()?.displayName {
+                ToastHUD.shared.show("已加密发送 \(sentCount) 个文件到 \(targetName)")
+            }
+            return
+        }
+        let url = urls[index]
+        engine.sendFile(at: url) { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case .success(let (savedName, peerName)):
+                if urls.count == 1 {
+                    ToastHUD.shared.show("已加密发送文件「\(savedName)」到 \(peerName)")
+                }
+                self.sendFilesSequentially(urls, index: index + 1, sentCount: sentCount + 1)
+            case .failure(let err):
+                NSApp.activate(ignoringOtherApps: true)
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = "文件发送未成功（\(url.lastPathComponent)）"
+                alert.informativeText = err.localizedDescription
+                alert.addButton(withTitle: "好")
+                alert.runModal()
+            }
+        }
     }
 
     private func sendCurrentClipboard() {
@@ -626,11 +727,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    @objc private func handleSelectPeer(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        engine.setActivePeer(id)
+        if let peer = engine.activePeer() {
+            ToastHUD.shared.show("已切换发送目标为「\(peer.displayName)」", playSound: false)
+        }
+    }
+
+    @objc private func handleRemoveOnePeer(_ sender: NSMenuItem) {
+        guard let peer = sender.representedObject as? PairedPeer else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "确认移除设备「\(peer.displayName)」？"
+        alert.informativeText = "移除后该设备将无法继续向你发送文字或文件，如需恢复可重新验证码配对。"
+        alert.addButton(withTitle: "移除")
+        alert.addButton(withTitle: "取消")
+        if alert.runModal() == .alertFirstButtonReturn {
+            engine.removePeer(peer.deviceID)
+            ToastHUD.shared.show("已移除「\(peer.displayName)」", playSound: false)
+        }
+    }
+
+    @objc private func handleClearPairing() {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "确认清除全部配对设备？"
+        alert.informativeText = "清除后需要重新用 6 位验证码配对，才能继续互传文字和文件。"
+        alert.addButton(withTitle: "清除全部")
+        alert.addButton(withTitle: "取消")
+        if alert.runModal() == .alertFirstButtonReturn {
+            engine.clearPairing()
+            ToastHUD.shared.show("已清除全部配对记录", playSound: false)
+        }
+    }
+
+    @objc private func handleOpenDownloads() {
+        let dir = engine.downloadsDirectory()
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(dir)
+    }
+
     @objc private func handleToggleReceiver() {
         let next = !engine.isReceiverEnabled()
         engine.setReceiverEnabled(next)
         if next {
-            ToastHUD.shared.show("接收已开启，可以接收对方发来的文字")
+            ToastHUD.shared.show("接收已开启，可以接收已配对设备的文字和文件")
         } else {
             ToastHUD.shared.show("接收已关闭，已完全释放监听端口（出门更安心）")
         }
@@ -642,20 +786,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openEnterCode() {
         enterCodeWC.showAndDiscover()
-    }
-
-    @objc private func handleClearPairing() {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.alertStyle = .informational
-        alert.messageText = "确认清除当前配对？"
-        alert.informativeText = "清除后需要重新用 6 位验证码配对，才能继续互发文字。"
-        alert.addButton(withTitle: "清除配对")
-        alert.addButton(withTitle: "取消")
-        if alert.runModal() == .alertFirstButtonReturn {
-            engine.clearPairing()
-            ToastHUD.shared.show("已清除配对记录", playSound: false)
-        }
     }
 
     @objc private func handleToggleLaunchAtLogin() {

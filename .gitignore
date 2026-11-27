@@ -2,6 +2,13 @@
 build/
 *.app
 *.zip
+*.exe
+*.apk
+*.jks
+*.keystore
 .swiftpm/
 .build/
 *.dSYM/
+android/.gradle/
+android/app/build/
+android/local.properties

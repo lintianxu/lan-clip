@@ -1,117 +1,92 @@
 <div align="center">
 
-# LanClip (局域网传文字)
+# LanClip (局域网快传)
 
-**Zero-Dependency · End-to-End Encrypted · Native macOS LAN Clipboard Transfer**
+**Cross-Platform End-to-End Encrypted LAN Clipboard & File Transfer for macOS, Windows & Android**
 
 [简体中文](README.md) | English
 
-![macOS 13+](https://img.shields.io/badge/macOS-13.0%2B-007AFF?style=flat-square&logo=apple)
-![Universal Binary](https://img.shields.io/badge/Arch-Apple%20Silicon%20%2B%20Intel-34C759?style=flat-square)
-![Zero Dependencies](https://img.shields.io/badge/Dependencies-Zero-5856D6?style=flat-square)
+![Platforms](https://img.shields.io/badge/Platforms-macOS%20%7C%20Windows%20%7C%20Android-007AFF?style=flat-square)
 ![Encryption](https://img.shields.io/badge/Crypto-X25519%20%2B%20Ed25519%20%2B%20AES--256--GCM-FF9500?style=flat-square)
+![Zero Cloud](https://img.shields.io/badge/Server-Zero%20Cloud%20%7C%20Zero%20SSH-34C759?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)
 
 </div>
 
-Have two Macs signed into **different Apple IDs** where Apple's Universal Clipboard doesn't work? **LanClip** is a tiny (~1.1 MB) zero-dependency native Swift macOS app that lets you send clipboard text directly between two Macs on the same LAN — **no cloud servers, no Remote Login (SSH), no manual certificate files**, just a **one-time 6-digit verification code** and end-to-end encryption on every transfer.
+Want fast, private clipboard and file sharing across **macOS (even with different Apple IDs)**, **Windows**, and **Android** on the same Wi-Fi without cloud accounts, USB cables, or enabling SSH / Remote Login?
+
+**LanClip** is a zero-cloud, native multi-platform LAN transfer tool. Pair any two devices once with a **one-time 6-digit verification code**, build your trusted device list, and send **end-to-end encrypted clipboard text and streaming files** in one click.
 
 ---
 
 ## Why LanClip?
 
-| Feature | Cloud Chat / Notes | Plaintext LAN Tools | macOS Remote Login (SSH) | **LanClip** |
+| Feature | Cloud Chat / Notes | Plaintext LAN Tools | System SSH / Remote Login | **LanClip** |
 | :--- | :---: | :---: | :---: | :---: |
-| **Works across different Apple IDs** | Needs shared account | ✅ | ✅ | ✅ |
-| **100% LAN-only (zero cloud servers)** | ❌ | ✅ | ✅ | ✅ |
-| **End-to-end encrypted transfers** | Provider-dependent | ❌ **Plaintext** | ✅ | ✅ **Per-transfer PFS** |
-| **No SSH / shell exposure** | ✅ | ✅ | ❌ **Opens OS login** | ✅ **Zero shell capability** |
-| **Memory-only (no disk / clipboard logs)** | ❌ Stored in cloud | Implementation-dependent | Script-dependent | ✅ **Direct to RAM pasteboard** |
-| **Frictionless pairing** | Account login | Unauthenticated broadcast | CLI key exchange | ✅ **One-time 6-digit code** |
+| **macOS + Windows + Android** | Needs shared cloud login | Varies | Poor mobile/Windows UX | ✅ **Native 3-platform interop** |
+| **100% LAN-only (zero cloud)** | ❌ Cloud relays | ✅ | ✅ | ✅ **Direct peer-to-peer** |
+| **Encrypted clipboard transfers** | Provider-dependent | ❌ **Plaintext** | ✅ | ✅ **Per-transfer PFS** |
+| **Encrypted file transfers** | Provider-dependent | ❌ **Often plaintext** | ✅ | ✅ **Metadata + chunks + ACK encrypted** |
+| **No SSH / OS password exposure** | ✅ | ✅ | ❌ **Opens OS shell** | ✅ **Zero shell/disk access** |
+| **Safe overwrite-free saving** | ❌ Cloud history | Varies | Script-dependent | ✅ **RAM clipboard / unique filenames** |
 
 ---
 
-## Core Advantage: End-to-End Encrypted Transmission
+## Core Advantage: End-to-End Encrypted Text & File Transfers
 
-LanClip is designed from the ground up with zero third-party dependencies using only Apple's `CryptoKit`, `CommonCrypto`, `Security`, `Network`, and `AppKit`:
+> **Are file transfers also encrypted?**
+> **Yes — 100% end-to-end encrypted.** Every transfer (both clipboard text and streaming files) establishes a fresh ephemeral `Curve25519 (X25519)` key agreement authenticated by mutual `Ed25519` signatures before sending any data. File metadata (**filename, file size, chunk size**), every **256 KB chunk**, the **SHA-256 integrity manifest**, and the final **receipt ACK** are all encrypted with `AES-256-GCM` and deterministic sequence nonces.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant B as Initiator Mac B
-    participant A as Code Host Mac A
+    participant B as Initiator (Mac / Win / Android)
+    participant A as Code Host (Mac / Win / Android)
 
-    Note over A,B: Phase 1: One-Time 6-Digit Pairing (180s TTL / 5-attempt lockout)
+    Note over A,B: Phase 1: One-Time 6-Digit Pairing (180s TTL · 1-time · 5-attempt lockout)
     B->>A: PAIR_INIT (Ephemeral X25519 + Ed25519 Identity + NonceB)
     A-->>B: PAIR_CHALLENGE (Ephemeral X25519 + Ed25519 Identity + NonceA + Salt)
-    Note over B: Derives shared key from X25519 + PBKDF2-HMAC-SHA256 (100k rounds)<br/>Initiator proves knowledge of the 6-digit code first
+    Note over B: X25519 DH + PBKDF2-HMAC-SHA256 (100,000 rounds) + HKDF<br/>Initiator proves code first
     B->>A: PAIR_PROOF_B (HMAC-SHA256 transcript proof)
-    Note over A: Consumes code immediately; pins mutual Ed25519 public keys
+    Note over A: Consumes code; pins mutual Ed25519 keys into device list
     A-->>B: PAIR_PROOF_A (Mutual confirmation)
 
-    Note over A,B: Phase 2: Clipboard Transfer (Fresh Ephemeral Keys Every Send)
-    A->>B: CLIP_INIT (Fresh X25519 Public Key + Ed25519 Signature)
-    Note over B: Verifies peer Ed25519 signature first
-    B-->>A: CLIP_CHALLENGE (Fresh X25519 Public Key + Ed25519 Signature)
-    Note over A: Verifies receiver Ed25519 signature BEFORE encrypting payload
-    A->>B: CLIP_PAYLOAD (AES-256-GCM ciphertext with transcript AAD)
-    B-->>A: CLIP_ACK (Encrypted receipt; writes directly to NSPasteboard)
-```
+    Note over A,B: Phase 2A: Encrypted Clipboard (Memory-Only, <= 1 MB)
+    A->>B: CLIP_INIT / CLIP_CHALLENGE (Fresh X25519 + Mutual Ed25519 Signatures)
+    A->>B: CLIP_PAYLOAD -> CLIP_ACK (AES-256-GCM, direct to system pasteboard)
 
-### Security Highlights
-1. **Brute-Force Resistant 6-Digit Pairing**:
-   - Generated via `SecRandomCopyBytes` with unbiased rejection sampling; expires after **180 seconds**, **single-use**, and permanently **locks out after 5 failed attempts**.
-   - Key agreement binds ephemeral `Curve25519` (X25519) DH with **100,000-round `PBKDF2-HMAC-SHA256`**, derived via `HKDF-SHA256`, and verified with mutual `HMAC-SHA256` transcript proofs (`PROOF-B` first). Both Macs store each other's long-term `Ed25519` public keys in one step.
-2. **Per-Transfer Perfect Forward Secrecy (PFS)**:
-   - Every clipboard send negotiates fresh ephemeral `X25519` keys, verifies mutual `Ed25519` signatures **before** transmitting any payload, and encrypts UTF-8 text (capped at **1 MB**) with `AES-256-GCM` bound to the handshake transcript hash.
-3. **Strict LAN Allowlist & Instant Off Switch**:
-   - Incoming connections are restricted to private/local IP ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `127.0.0.0/8`, `169.254.0.0/16`, IPv6 `::1`, `fe80::/10`, `fc00::/7`), explicitly rejecting proxy TUN interfaces (`198.18.0.0/15`) and all public IPs.
-   - Toggle the receiver off from the menu bar anytime (e.g., on public Wi-Fi) to cancel the listener and Bonjour advertisement completely.
-4. **Memory-Only Clipboard Handling**:
-   - Plaintext never touches disk, logs, or notification banners. Long-term device keys live solely in `~/.lan-clip/state.json` (`0600` inside `0700` directory) without touching macOS Keychain.
-
----
-
-## Quick Start
-
-1. **Download**: Grab `LanClip-v2.0.0-macOS-universal.zip` from [Releases](https://github.com/lintianxu/lan-clip/releases), unzip **`局域网传文字.app`** (Universal Binary for Apple Silicon & Intel, macOS 13+), and move it into `/Applications` on both Macs.
-2. **First-Launch macOS Prompts** (ad-hoc signed open-source binary):
-   - If copied via AirDrop/browser and macOS reports *"damaged and can't be opened"*, remove the quarantine attribute once in Terminal:
-     ```sh
-     xattr -cr /Applications/局域网传文字.app
-     ```
-   - When prompted for **Local Network** access, click **Allow** so Bonjour discovery and LAN transfers work.
-3. **Pair Once & Send in One Click**:
-   - Open the app on both Macs → click **"生成 6 位验证码"** on Mac A → click **"输入对方验证码配对"** on Mac B, select Mac A (or enter its LAN IP), and type the 6 digits.
-   - Copy text on either Mac and click the Dock or Menu Bar icon to encrypt and push directly to the other Mac's clipboard (`⌘V` to paste).
-
----
-
-## Build & Test from Source
-
-Requires macOS 13+ with Xcode Command Line Tools (`swiftc`).
-
-```sh
-# Build Universal .app and release zip under build/
-sh build.sh
-
-# Build and install to ~/Desktop and ~/Applications
-sh build.sh --install
-```
-
-Run the 7-case end-to-end protocol & security test suite (uses isolated temp directories and ephemeral localhost ports; never modifies `~/.lan-clip` or your real clipboard):
-
-```sh
-swiftc -O -swift-version 5 -parse-as-library \
-  -framework Network -framework CryptoKit -framework Security \
-  Sources/Protocol.swift Sources/NetworkEngine.swift Tests/ProtocolTest.swift \
-  -o /tmp/lanclip_test && /tmp/lanclip_test && rm -f /tmp/lanclip_test
+    Note over A,B: Phase 2B: Streaming Encrypted File Transfer (256 KB Chunks, <= 4 GB)
+    A->>B: FILE_INIT / FILE_CHALLENGE (Fresh X25519 + Mutual Ed25519 Signatures)
+    A->>B: FILE_META (Encrypted fileName, fileSize, chunkSize)
+    B-->>A: FILE_READY (Encrypted ACK; prepares isolated .part file)
+    loop Each 256 KB chunk
+        A->>B: FILE_CHUNK #i (Deterministic seq nonce + AES-256-GCM)
+    end
+    A->>B: FILE_FINISH (Encrypted totalChunks + SHA-256 checksum)
+    B-->>A: FILE_ACK (Verified -> atomic move into Downloads/LanClip)
 ```
 
 ---
 
-## Documentation & License
+## Downloads & Quick Start
 
-- Security Architecture & Threat Model: [SECURITY.md](SECURITY.md)
-- Contributing Guidelines: [CONTRIBUTING.md](CONTRIBUTING.md)
-- License: [MIT License](LICENSE)
+Grab pre-built binaries for all three platforms from [Releases](https://github.com/lintianxu/lan-clip/releases):
+
+- **macOS (`LanClip-v3.0.0-macOS-universal.zip`)**: Universal App (`局域网快传.app`) for Apple Silicon & Intel (macOS 13+). Click Dock icon to send clipboard; drag files onto the app icon to send files.
+  - First launch after download/AirDrop: run `xattr -cr /Applications/局域网快传.app` if quarantined, and allow **Local Network** permission.
+- **Windows (`LanClip-v3.0.0-Windows-x64.exe`)**: Single portable Win32 tray binary (~4.2 MB, Windows 10/11 x64). Left-click tray icon to send clipboard; right-click to send files, switch peers, or toggle receiver.
+  - First launch: click **More info → Run anyway** on SmartScreen and allow Private Network access in Windows Firewall.
+- **Android (`LanClip-v3.0.0-Android.apk`)**: Native Material app (Android 8.0+). Supports sending phone clipboard, multi-file/photo picker, quick text composer box, Android Share Sheet (`ACTION_SEND` / `ACTION_SEND_MULTIPLE`), and foreground receiver toggle.
+
+---
+
+## Repository Layout & Cross-Platform Tests
+
+All three native clients verify against the shared test suite in [protocol/test_vectors.json](protocol/test_vectors.json) and run automated CI builds on every push via [build-and-release.yml](.github/workflows/build-and-release.yml):
+
+- [protocol/SPEC.md](protocol/SPEC.md) — Exact binary protocol specification (`LC2\x01`)
+- [macos/](macos) — Swift client (`AppKit` + `Network` + `CryptoKit`)
+- [windows/](windows) — Zero-CGo Go client (`golang.org/x/{crypto,net,sys}` + Win32 tray)
+- [android/](android) — Native Kotlin client (`BouncyCastle` + AndroidX Material + `NsdManager`)
+
+See [SECURITY.md](SECURITY.md) for the full threat model and [CONTRIBUTING.md](CONTRIBUTING.md) for build/test instructions.

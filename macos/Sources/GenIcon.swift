@@ -45,13 +45,11 @@ func renderIcon(px: Int) -> Data? {
     }
     ctx.restoreGState()
 
-    // Subtle white border highlight
     ctx.setStrokeColor(NSColor(white: 1.0, alpha: 0.22).cgColor)
     ctx.setLineWidth(max(1.0, s * 0.015))
     ctx.addPath(cardPath)
     ctx.strokePath()
 
-    // Clipboard board body
     let boardW = s * 0.44
     let boardH = s * 0.54
     let boardX = s * 0.28
@@ -62,7 +60,6 @@ func renderIcon(px: Int) -> Data? {
     ctx.addPath(boardPath)
     ctx.fillPath()
 
-    // Clipboard top clip
     let clipW = s * 0.22
     let clipH = s * 0.09
     let clipRect = CGRect(x: (s - clipW) / 2, y: boardY + boardH - clipH * 0.45, width: clipW, height: clipH)
@@ -71,7 +68,6 @@ func renderIcon(px: Int) -> Data? {
     ctx.addPath(clipPath)
     ctx.fillPath()
 
-    // Blue text lines on clipboard
     ctx.setFillColor(NSColor(calibratedRed: 0.14, green: 0.46, blue: 0.90, alpha: 0.85).cgColor)
     for idx in 0..<3 {
         let lw = boardW * (idx == 2 ? 0.45 : 0.68)
@@ -83,7 +79,6 @@ func renderIcon(px: Int) -> Data? {
         ctx.fillPath()
     }
 
-    // Small upward-right transmit arrow badge
     let arrow = CGMutablePath()
     let ax = s * 0.66
     let ay = s * 0.27

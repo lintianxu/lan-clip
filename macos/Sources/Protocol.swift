@@ -8,9 +8,16 @@ import Darwin
 let LANCLIP_MAGIC = Data([0x4C, 0x43, 0x32, 0x01])
 let LANCLIP_DEFAULT_PORT: UInt16 = 47821
 let LANCLIP_MAX_CLIP_BYTES = 1_048_576
+let LANCLIP_MAX_FILE_BYTES: Int64 = 4_294_967_296
+let LANCLIP_FILE_CHUNK_SIZE = 262_144
 let LANCLIP_MAX_FRAME_BYTES = 1_100_000
 let LANCLIP_SERVICE_TYPE = "_lanclip._tcp"
 let LANCLIP_PBKDF2_ROUNDS: UInt32 = 100_000
+
+let FILE_SEQ_META: UInt64 = 0
+let FILE_SEQ_READY: UInt64 = 0xFFFF_FFFF_FFFF_FFFD
+let FILE_SEQ_FINISH: UInt64 = 0xFFFF_FFFF_FFFF_FFFE
+let FILE_SEQ_ACK: UInt64 = 0xFFFF_FFFF_FFFF_FFFF
 
 enum MsgType: UInt8 {
     case pairInit = 0x01
@@ -24,6 +31,15 @@ enum MsgType: UInt8 {
     case clipPayload = 0x13
     case clipAck = 0x14
     case clipError = 0x1F
+
+    case fileInit = 0x21
+    case fileChallenge = 0x22
+    case fileMeta = 0x23
+    case fileReady = 0x24
+    case fileChunk = 0x25
+    case fileFinish = 0x26
+    case fileAck = 0x27
+    case fileError = 0x2F
 }
 
 enum ProtocolError: Error, LocalizedError {
@@ -76,7 +92,7 @@ struct DeviceIdentity: Codable {
     }
 }
 
-struct PairedPeer: Codable {
+struct PairedPeer: Codable, Equatable {
     let deviceID: String
     var displayName: String
     let ed25519PublicKeyB64: String
@@ -94,9 +110,51 @@ struct PairedPeer: Codable {
 
 struct PersistedState: Codable {
     var identity: DeviceIdentity
-    var peer: PairedPeer?
+    var peers: [PairedPeer]
+    var activePeerID: String?
     var receiverEnabled: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case identity
+        case peers
+        case peer
+        case activePeerID
+        case receiverEnabled
+    }
+
+    init(identity: DeviceIdentity, peers: [PairedPeer], activePeerID: String?, receiverEnabled: Bool) {
+        self.identity = identity
+        self.peers = peers
+        self.activePeerID = activePeerID
+        self.receiverEnabled = receiverEnabled
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.identity = try c.decode(DeviceIdentity.self, forKey: .identity)
+        self.receiverEnabled = try c.decodeIfPresent(Bool.self, forKey: .receiverEnabled) ?? true
+        if let list = try c.decodeIfPresent([PairedPeer].self, forKey: .peers) {
+            self.peers = list
+            self.activePeerID = try c.decodeIfPresent(String.self, forKey: .activePeerID) ?? list.first?.deviceID
+        } else if let legacy = try c.decodeIfPresent(PairedPeer.self, forKey: .peer) {
+            self.peers = [legacy]
+            self.activePeerID = legacy.deviceID
+        } else {
+            self.peers = []
+            self.activePeerID = nil
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(identity, forKey: .identity)
+        try c.encode(peers, forKey: .peers)
+        try c.encodeIfPresent(activePeerID, forKey: .activePeerID)
+        try c.encode(receiverEnabled, forKey: .receiverEnabled)
+    }
 }
+
+// MARK: - Wire Payloads
 
 struct PairInitMsg: Codable {
     let bDeviceID: String
@@ -140,6 +198,21 @@ struct ClipChallengeMsg: Codable {
 
 struct ClipSealedMsg: Codable {
     let combinedB64: String
+}
+
+struct FileMetaMsg: Codable {
+    let fileName: String
+    let fileSize: Int64
+    let chunkSize: Int
+}
+
+struct FileFinishMsg: Codable {
+    let sha256Hex: String
+    let totalChunks: UInt64
+}
+
+struct FileAckMsg: Codable {
+    let savedName: String
 }
 
 // MARK: - Random & Key Derivation
@@ -241,6 +314,8 @@ func verifyPairProof(_ proof: Data, label: String, transcript: Data, macKey: Sym
     return HMAC<SHA256>.isValidAuthenticationCode(proof, authenticating: msg, using: macKey)
 }
 
+// MARK: - Clipboard Crypto
+
 func clipInitSignData(senderID: String, receiverID: String, ephPubA: Data, nonceA: Data) -> Data {
     var data = Data("LANCLIP-CLIP-INIT-v2".utf8)
     data.append(Data(senderID.utf8))
@@ -314,6 +389,208 @@ func openClipData(_ combined: Data, aadLabel: String, transcriptHash: Data, key:
     aad.append(transcriptHash)
     let box = try AES.GCM.SealedBox(combined: combined)
     return try AES.GCM.open(box, using: key, authenticating: aad)
+}
+
+// MARK: - Streaming File Crypto (v3)
+
+func fileInitSignData(senderID: String, receiverID: String, ephPubA: Data, nonceA: Data) -> Data {
+    var data = Data("LANCLIP-FILE-INIT-v3".utf8)
+    data.append(Data(senderID.utf8))
+    data.append(Data("|".utf8))
+    data.append(Data(receiverID.utf8))
+    data.append(ephPubA)
+    data.append(nonceA)
+    return data
+}
+
+func fileChallengeSignData(
+    receiverID: String,
+    senderID: String,
+    ephPubA: Data,
+    nonceA: Data,
+    ephPubB: Data,
+    nonceB: Data
+) -> Data {
+    var data = Data("LANCLIP-FILE-CHAL-v3".utf8)
+    data.append(Data(receiverID.utf8))
+    data.append(Data("|".utf8))
+    data.append(Data(senderID.utf8))
+    data.append(ephPubA)
+    data.append(nonceA)
+    data.append(ephPubB)
+    data.append(nonceB)
+    return data
+}
+
+func fileTranscriptHash(
+    senderID: String,
+    receiverID: String,
+    ephPubA: Data,
+    nonceA: Data,
+    ephPubB: Data,
+    nonceB: Data
+) -> Data {
+    var hasher = SHA256()
+    hasher.update(data: Data("LANCLIP-FILE-TX-v3".utf8))
+    hasher.update(data: Data(senderID.utf8))
+    hasher.update(data: Data("|".utf8))
+    hasher.update(data: Data(receiverID.utf8))
+    hasher.update(data: ephPubA)
+    hasher.update(data: nonceA)
+    hasher.update(data: ephPubB)
+    hasher.update(data: nonceB)
+    return Data(hasher.finalize())
+}
+
+func deriveFileSessionKeys(sharedSecret: SharedSecret, transcriptHash: Data) -> (key: SymmetricKey, nonceBase: Data) {
+    let sessionKey = sharedSecret.hkdfDerivedSymmetricKey(
+        using: SHA256.self,
+        salt: transcriptHash,
+        sharedInfo: Data("lanclip-file-gcm-v3".utf8),
+        outputByteCount: 32
+    )
+    let nonceKey = sharedSecret.hkdfDerivedSymmetricKey(
+        using: SHA256.self,
+        salt: transcriptHash,
+        sharedInfo: Data("lanclip-file-nonce-v3".utf8),
+        outputByteCount: 12
+    )
+    let nonceBase = nonceKey.withUnsafeBytes { Data($0) }
+    return (sessionKey, nonceBase)
+}
+
+func fileDeterministicNonce(nonceBase: Data, seq: UInt64) throws -> AES.GCM.Nonce {
+    guard nonceBase.count == 12 else {
+        throw ProtocolError.cryptoFailure("无效的 nonce 基准长度")
+    }
+    var out = Data(nonceBase.prefix(4))
+    var tailVal: UInt64 = 0
+    for i in 4..<12 {
+        tailVal = (tailVal << 8) | UInt64(nonceBase[i])
+    }
+    let xored = (tailVal ^ seq).bigEndian
+    withUnsafeBytes(of: xored) { out.append(contentsOf: $0) }
+    return try AES.GCM.Nonce(data: out)
+}
+
+func uint64BigEndianData(_ v: UInt64) -> Data {
+    var be = v.bigEndian
+    return withUnsafeBytes(of: &be) { Data($0) }
+}
+
+func fileAAD(label: String, seqPrefix: UInt64? = nil, transcriptHash: Data) -> Data {
+    var aad = Data(label.utf8)
+    if let seq = seqPrefix {
+        aad.append(uint64BigEndianData(seq))
+    }
+    aad.append(transcriptHash)
+    return aad
+}
+
+func sealFileRaw(plain: Data, key: SymmetricKey, nonceBase: Data, seq: UInt64, aad: Data) throws -> Data {
+    let nonce = try fileDeterministicNonce(nonceBase: nonceBase, seq: seq)
+    let box = try AES.GCM.seal(plain, using: key, nonce: nonce, authenticating: aad)
+    var out = Data()
+    out.append(box.ciphertext)
+    out.append(box.tag)
+    return out
+}
+
+func openFileRaw(ciphertextAndTag: Data, key: SymmetricKey, nonceBase: Data, seq: UInt64, aad: Data) throws -> Data {
+    guard ciphertextAndTag.count >= 16 else {
+        throw ProtocolError.cryptoFailure("文件密文格式无效")
+    }
+    let nonce = try fileDeterministicNonce(nonceBase: nonceBase, seq: seq)
+    let ct = ciphertextAndTag.prefix(ciphertextAndTag.count - 16)
+    let tag = ciphertextAndTag.suffix(16)
+    let box = try AES.GCM.SealedBox(nonce: nonce, ciphertext: ct, tag: tag)
+    return try AES.GCM.open(box, using: key, authenticating: aad)
+}
+
+func constantTimeEqualHex(_ a: String, _ b: String) -> Bool {
+    let da = Array(a.lowercased().utf8)
+    let db = Array(b.lowercased().utf8)
+    guard da.count == db.count, !da.isEmpty else { return false }
+    var diff: UInt8 = 0
+    for i in 0..<da.count {
+        diff |= (da[i] ^ db[i])
+    }
+    return diff == 0
+}
+
+// MARK: - Filename Sanitization & Non-Overwriting Path
+
+private let WINDOWS_RESERVED_STEMS: Set<String> = [
+    "CON", "PRN", "AUX", "NUL",
+    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+]
+
+func sanitizeReceivedFileName(_ raw: String) -> String {
+    let parts = raw.split(omittingEmptySubsequences: true) { $0 == "/" || $0 == "\\" }
+    var base = String(parts.last ?? "")
+
+    let forbidden: Set<Character> = ["<", ">", ":", "\"", "/", "\\", "|", "?", "*"]
+    base = String(base.unicodeScalars.filter { scalar in
+        if scalar.value < 0x20 || scalar.value == 0x7F { return false }
+        let ch = Character(scalar)
+        return !forbidden.contains(ch)
+    })
+
+    while base.hasPrefix(".") || base.hasPrefix(" ") {
+        base.removeFirst()
+    }
+    while base.hasSuffix(".") || base.hasSuffix(" ") {
+        base.removeLast()
+    }
+
+    if base.isEmpty || base == "." || base == ".." {
+        return "received_file"
+    }
+
+    let stem = base.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? base
+    if WINDOWS_RESERVED_STEMS.contains(stem.uppercased()) {
+        return "received_file"
+    }
+
+    if base.utf8.count > 180 {
+        var acc = ""
+        var byteCount = 0
+        for ch in base {
+            let len = String(ch).utf8.count
+            if byteCount + len > 180 { break }
+            acc.append(ch)
+            byteCount += len
+        }
+        base = acc
+        while base.hasSuffix(".") || base.hasSuffix(" ") {
+            base.removeLast()
+        }
+        if base.isEmpty {
+            return "received_file"
+        }
+    }
+    return base
+}
+
+func uniqueDestinationURL(in dir: URL, sanitizedName: String) -> URL {
+    let fm = FileManager.default
+    let first = dir.appendingPathComponent(sanitizedName, isDirectory: false)
+    if !fm.fileExists(atPath: first.path) {
+        return first
+    }
+    let ns = sanitizedName as NSString
+    let ext = ns.pathExtension
+    let stem = ns.deletingPathExtension
+    var idx = 1
+    while true {
+        let candidateName = ext.isEmpty ? "\(stem) (\(idx))" : "\(stem) (\(idx)).\(ext)"
+        let candidate = dir.appendingPathComponent(candidateName, isDirectory: false)
+        if !fm.fileExists(atPath: candidate.path) {
+            return candidate
+        }
+        idx += 1
+    }
 }
 
 // MARK: - Network Framing
@@ -407,19 +684,13 @@ func readFrame(connection: NWConnection, completion: @escaping (Result<(MsgType,
 // MARK: - LAN IP Security Guard
 
 func isAllowedIPv4Bytes(_ b: (UInt8, UInt8, UInt8, UInt8)) -> Bool {
-    // Explicitly reject Clash/benchmark TUN range 198.18.0.0/15
     if b.0 == 198 && (b.1 == 18 || b.1 == 19) {
         return false
     }
-    // 10.0.0.0/8
     if b.0 == 10 { return true }
-    // 172.16.0.0/12
     if b.0 == 172 && (b.1 >= 16 && b.1 <= 31) { return true }
-    // 192.168.0.0/16
     if b.0 == 192 && b.1 == 168 { return true }
-    // 127.0.0.0/8 (loopback)
     if b.0 == 127 { return true }
-    // 169.254.0.0/16 (link-local)
     if b.0 == 169 && b.1 == 254 { return true }
     return false
 }
@@ -431,20 +702,16 @@ func isAllowedIPv4Data(_ raw: Data) -> Bool {
 
 func isAllowedIPv6Data(_ raw: Data) -> Bool {
     guard raw.count == 16 else { return false }
-    // ::1 loopback
     if raw.prefix(15).allSatisfy({ $0 == 0 }) && raw[15] == 1 {
         return true
     }
-    // ::ffff:a.b.c.d IPv4-mapped
     let v4Prefix = Data([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff])
     if raw.prefix(12) == v4Prefix {
         return isAllowedIPv4Data(Data(raw.suffix(4)))
     }
-    // fe80::/10 link-local
     if raw[0] == 0xfe && (raw[1] & 0xc0) == 0x80 {
         return true
     }
-    // fc00::/7 ULA
     if (raw[0] & 0xfe) == 0xfc {
         return true
     }
@@ -532,6 +799,12 @@ func defaultStateURL() -> URL {
     return dir.appendingPathComponent("state.json", isDirectory: false)
 }
 
+func defaultDownloadsURL() -> URL {
+    let dl = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true)
+    return dl.appendingPathComponent("LanClip", isDirectory: true)
+}
+
 func loadOrCreateState(at url: URL, defaultDisplayName: String) throws -> PersistedState {
     let dir = url.deletingLastPathComponent()
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -546,7 +819,8 @@ func loadOrCreateState(at url: URL, defaultDisplayName: String) throws -> Persis
 
     let fresh = PersistedState(
         identity: DeviceIdentity.generate(displayName: defaultDisplayName),
-        peer: nil,
+        peers: [],
+        activePeerID: nil,
         receiverEnabled: true
     )
     try saveState(fresh, to: url)
