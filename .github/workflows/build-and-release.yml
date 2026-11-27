@@ -82,8 +82,11 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Android 35 SDK
+        run: |
+          SDKMGR="$(ls "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/cmdline-tools/*/bin/sdkmanager | tail -1)"
+          yes | "$SDKMGR" --licenses >/dev/null || true
+          "$SDKMGR" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Install Android 35 SDK Platform
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
