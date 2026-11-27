@@ -11,6 +11,10 @@
 ![Zero Cloud](https://img.shields.io/badge/Server-Zero%20Cloud%20%7C%20Zero%20SSH-34C759?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)
 
+<br/><br/>
+
+<img src="docs/images/hero-banner.png" alt="LanClip v3.0 — Cross-Platform End-to-End Encrypted Clipboard and File Transfer across macOS, Windows & Android" width="100%" />
+
 </div>
 
 Want fast, private clipboard and file sharing across **macOS (even with different Apple IDs)**, **Windows**, and **Android** on the same Wi-Fi without cloud accounts, USB cables, or enabling SSH / Remote Login?
@@ -36,6 +40,13 @@ Want fast, private clipboard and file sharing across **macOS (even with differen
 
 > **Are file transfers also encrypted?**
 > **Yes — 100% end-to-end encrypted.** Every transfer (both clipboard text and streaming files) establishes a fresh ephemeral `Curve25519 (X25519)` key agreement authenticated by mutual `Ed25519` signatures before sending any data. File metadata (**filename, file size, chunk size**), every **256 KB chunk**, the **SHA-256 integrity manifest**, and the final **receipt ACK** are all encrypted with `AES-256-GCM` and deterministic sequence nonces.
+
+<p align="center">
+  <img src="docs/images/e2ee-architecture.png" alt="LanClip E2EE Architecture Overview" width="100%" />
+</p>
+
+<details>
+<summary>Expand detailed protocol sequence diagram (Mermaid)</summary>
 
 ```mermaid
 sequenceDiagram
@@ -66,17 +77,33 @@ sequenceDiagram
     B-->>A: FILE_ACK (Verified -> atomic move into Downloads/LanClip)
 ```
 
+</details>
+
+---
+
+## Cross-Platform UI Previews
+
+<p align="center">
+  <img src="docs/images/ui-desktop-mac-win.png" alt="macOS & Windows desktop tray UI previews" width="100%" />
+  <sub>Desktop clients (macOS menu bar / Dock &amp; Windows portable tray app — rendered faithfully from v3.0.0 layouts with demo hostnames/IPs)</sub>
+</p>
+
+<p align="center">
+  <img src="docs/images/ui-android-showcase.png" alt="Android client main screen, pairing modal & Share Sheet preview" width="100%" />
+  <sub>Android Material 3 client (clipboard send, multi-file picker, quick text composer box, 6-digit pairing &amp; Android Share Sheet)</sub>
+</p>
+
 ---
 
 ## Downloads & Quick Start
 
 Grab pre-built binaries for all three platforms from [Releases](https://github.com/lintianxu/lan-clip/releases):
 
-- **macOS (`LanClip-v3.0.0-macOS-universal.zip`)**: Universal App (`局域网快传.app`) for Apple Silicon & Intel (macOS 13+). Click Dock icon to send clipboard; drag files onto the app icon to send files.
+- **macOS (`LanClip-v3.0.0-macOS-universal.zip`)**: Universal App (`局域网快传.app`, ~1.3 MB) for Apple Silicon & Intel (macOS 13+). Click Dock icon to send clipboard; drag files onto the app icon to send files.
   - First launch after download/AirDrop: run `xattr -cr /Applications/局域网快传.app` if quarantined, and allow **Local Network** permission.
-- **Windows (`LanClip-v3.0.0-Windows-x64.exe`)**: Single portable Win32 tray binary (~4.2 MB, Windows 10/11 x64). Left-click tray icon to send clipboard; right-click to send files, switch peers, or toggle receiver.
+- **Windows (`LanClip-v3.0.0-Windows-x64.exe`)**: Single portable Win32 tray binary (~3.5 MB, Windows 10/11 x64). Left-click tray icon to send clipboard; right-click to send files, switch peers, or toggle receiver.
   - First launch: click **More info → Run anyway** on SmartScreen and allow Private Network access in Windows Firewall.
-- **Android (`LanClip-v3.0.0-Android.apk`)**: Native Material app (Android 8.0+). Supports sending phone clipboard, multi-file/photo picker, quick text composer box, Android Share Sheet (`ACTION_SEND` / `ACTION_SEND_MULTIPLE`), and foreground receiver toggle.
+- **Android (`LanClip-v3.0.0-Android.apk`)**: Native Material app (~7.6 MB, Android 8.0+). Supports sending phone clipboard, multi-file/photo picker, quick text composer box, Android Share Sheet (`ACTION_SEND` / `ACTION_SEND_MULTIPLE`), and foreground receiver toggle.
 
 ---
 

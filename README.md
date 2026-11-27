@@ -11,6 +11,10 @@
 ![Zero Cloud](https://img.shields.io/badge/Server-Zero%20Cloud%20%7C%20Zero%20SSH-34C759?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)
 
+<br/><br/>
+
+<img src="docs/images/hero-banner.png" alt="局域网快传 LanClip v3.0 — macOS / Windows / Android 三端互通与全程端到端加密" width="100%" />
+
 </div>
 
 两台 Mac 登录**不同的 Apple ID**、或者电脑与 Windows / 安卓手机之间想快速互传文字、照片和大文件，又不想把私人内容传上微信或第三方网盘？
@@ -36,6 +40,13 @@
 
 > **明确回答常见疑问：发文件也是 100% 端到端加密吗？**
 > **是的！** 无论是几十个字的剪贴板文本，还是几 GB 的视频和照片，**LanClip** 从握手第一包开始就启用独立的临时前向加密——**不仅每一块文件内容密文传输，连文件名、文件大小、SHA-256 完整性校验码和接收回执也全部加密且受完整性保护**。局域网里同一 Wi-Fi 下的其他设备即使抓包，也看不到你传了什么字、传了什么文件。
+
+<p align="center">
+  <img src="docs/images/e2ee-architecture.png" alt="LanClip 端到端加密全景：6 位码防暴破配对、剪贴板纯内存加密与 256 KB 分片流式文件全加密" width="100%" />
+</p>
+
+<details>
+<summary>点击展开底层协议交互时序图 (Mermaid)</summary>
 
 ```mermaid
 sequenceDiagram
@@ -67,6 +78,8 @@ sequenceDiagram
     B-->>A: FILE_ACK (校验无误后安全移入「下载/LanClip」并回执最终文件名)
 ```
 
+</details>
+
 ### 六道安全与工程防线
 1. **每次传输独立前向加密（PFS）**：每次发文字或发文件都会现算一对全新的临时 `Curve25519 (X25519)` 密钥，再通过 `HKDF-SHA256` 派生当次专属 `AES-256-GCM` 会话密钥。发送前必须先通过对方 `Ed25519` 身份签名校验，否则直接拦截，绝不泄露任何数据。
 2. **分片流式防爆内存与防重放**：大文件按 **256 KB** 分片流式读写加密，绝不把大文件整块塞进内存；每片绑定严格递增序号与关联会话抄本的确定性 Nonce，防乱序、防篡改、防截断。
@@ -77,13 +90,23 @@ sequenceDiagram
 
 ---
 
-## 三端体验一览
+## 三端体验与界面预览
 
 | 平台 | 形态与体积 | 核心操作 | 收到文件去向 |
 | :--- | :--- | :--- | :--- |
 | **macOS (13+)** | 原生双架构 Universal `.app`（约 1.3 MB） | 顶部菜单栏 + Dock（**点 Dock 图标发文字，把文件拖到图标上直接发文件**） | `~/Downloads/LanClip/` |
-| **Windows (10/11)** | 单文件绿色托盘程序 `.exe`（约 4.2 MB，免安装） | 右下角系统托盘（左键单击发剪贴板，右键选文件 / 切设备 / 开关接收） | `Downloads\LanClip\` |
-| **Android (8.0+)** | 原生 Material 安装包 `.apk` | 主页一键发剪贴板 / 选文件照片 / **临时打字框** / **系统「分享」菜单直发** | 系统「下载/LanClip」 |
+| **Windows (10/11)** | 单文件绿色托盘程序 `.exe`（约 3.5 MB，免安装） | 右下角系统托盘（左键单击发剪贴板，右键选文件 / 切设备 / 开关接收） | `Downloads\LanClip\` |
+| **Android (8.0+)** | 原生 Material 安装包 `.apk`（约 7.6 MB） | 主页一键发剪贴板 / 选文件照片 / **临时打字框** / **系统「分享」菜单直发** | 系统「下载/LanClip」 |
+
+<p align="center">
+  <img src="docs/images/ui-desktop-mac-win.png" alt="macOS 与 Windows 桌面端托盘菜单及配对弹窗高保真预览" width="100%" />
+  <sub>桌面端（macOS / Windows）菜单栏、托盘交互与 6 位码配对预览（按 v3.0.0 真实界面复刻，演示设备名与内网 IP 已脱敏）</sub>
+</p>
+
+<p align="center">
+  <img src="docs/images/ui-android-showcase.png" alt="Android 手机端主界面、配对验证码弹窗与系统分享直发预览" width="100%" />
+  <sub>Android 端主页（剪贴板发送 / 多选传文件 / 临时打字框 / 内存历史）与系统「分享」直发预览（按 v3.0.0 真实布局复刻）</sub>
+</p>
 
 ---
 
